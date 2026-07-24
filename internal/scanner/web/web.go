@@ -4,8 +4,13 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/GolemSecurity/golem-cops/internal/engine"
+	"gopkg.in/yaml.v3"
 )
 
 type Finding struct {
@@ -16,84 +21,45 @@ type Finding struct {
 	Found    bool
 }
 
-type HeaderRule struct {
-	ID           string
-	Header       string
-	Name         string
-	Severity     string
-	MissingMsg   string
-	PresentMsg   string
-	ValidateFunc func(value string) (bool, string)
+type WebRule struct {
+	ID          string `yaml:"id"`
+	Name        string `yaml:"name"`
+	Header      string `yaml:"header"`
+	Severity    string `yaml:"severity"`
+	Description string `yaml:"description"`
+	Remediation string `yaml:"remediation"`
 }
 
-var headerRules = []HeaderRule{
-	{
-		ID:         "WEB001",
-		Header:     "Strict-Transport-Security",
-		Name:       "Missing HSTS",
-		Severity:   "HIGH",
-		MissingMsg: "HSTS not set. Browser connections can be downgraded to HTTP.",
-		PresentMsg: "HSTS is configured.",
-	},
-	{
-		ID:         "WEB002",
-		Header:     "Content-Security-Policy",
-		Name:       "Missing CSP",
-		Severity:   "HIGH",
-		MissingMsg: "No Content Security Policy. XSS attacks are more likely to succeed.",
-		PresentMsg: "CSP is configured.",
-	},
-	{
-		ID:         "WEB003",
-		Header:     "X-Frame-Options",
-		Name:       "Missing X-Frame-Options",
-		Severity:   "MEDIUM",
-		MissingMsg: "X-Frame-Options not set. Site may be vulnerable to clickjacking.",
-		PresentMsg: "Clickjacking protection is enabled.",
-	},
-	{
-		ID:         "WEB004",
-		Header:     "X-Content-Type-Options",
-		Name:       "Missing X-Content-Type-Options",
-		Severity:   "MEDIUM",
-		MissingMsg: "X-Content-Type-Options not set. MIME sniffing attacks are possible.",
-		PresentMsg: "MIME sniffing protection enabled.",
-	},
-	{
-		ID:         "WEB005",
-		Header:     "Referrer-Policy",
-		Name:       "Missing Referrer-Policy",
-		Severity:   "LOW",
-		MissingMsg: "Referrer-Policy not set. Sensitive URLs may leak to third parties.",
-		PresentMsg: "Referrer-Policy is configured.",
-	},
-	{
-		ID:         "WEB006",
-		Header:     "Permissions-Policy",
-		Name:       "Missing Permissions-Policy",
-		Severity:   "LOW",
-		MissingMsg: "Permissions-Policy not set. Browser features are not restricted.",
-		PresentMsg: "Permissions-Policy is configured.",
-	},
-	{
-		ID:         "WEB007",
-		Header:     "X-Powered-By",
-		Name:       "Technology Disclosure",
-		Severity:   "LOW",
-		MissingMsg: "",
-		PresentMsg: "X-Powered-By header exposes technology stack. Consider removing it.",
-	},
-	{
-		ID:         "WEB008",
-		Header:     "Server",
-		Name:       "Server Version Disclosure",
-		Severity:   "LOW",
-		MissingMsg: "",
-		PresentMsg: "Server header exposes software version. Consider removing it.",
-	},
+type WebRuleFile struct {
+	Version  string    `yaml:"version"`
+	Category string    `yaml:"category"`
+	Scanner  string    `yaml:"scanner"`
+	Rules    []WebRule `yaml:"rules"`
+}
+
+func loadWebRules() ([]WebRule, error) {
+	rulesDir := filepath.Join(engine.FindRulesDir(), "code", "web")
+	rulesFile := filepath.Join(rulesDir, "rules.yaml")
+
+	data, err := os.ReadFile(rulesFile)
+	if err != nil {
+		return nil, fmt.Errorf("could not load web rules from %s", rulesFile)
+	}
+
+	var ruleFile WebRuleFile
+	if err := yaml.Unmarshal(data, &ruleFile); err != nil {
+		return nil, err
+	}
+
+	return ruleFile.Rules, nil
 }
 
 func Scan(target string) ([]Finding, error) {
+	rules, err := loadWebRules()
+	if err != nil {
+		return nil, err
+	}
+
 	if !strings.HasPrefix(target, "http://") && !strings.HasPrefix(target, "https://") {
 		target = "https://" + target
 	}
@@ -109,7 +75,6 @@ func Scan(target string) ([]Finding, error) {
 
 	resp, err := client.Get(target)
 	if err != nil {
-		// try http if https fails
 		if strings.HasPrefix(target, "https://") {
 			target = strings.Replace(target, "https://", "http://", 1)
 			resp, err = client.Get(target)
@@ -126,7 +91,7 @@ func Scan(target string) ([]Finding, error) {
 
 	var findings []Finding
 
-	for _, rule := range headerRules {
+	for _, rule := range rules {
 		value := resp.Header.Get(rule.Header)
 
 		// headers we flag when PRESENT (info disclosure)
@@ -136,7 +101,7 @@ func Scan(target string) ([]Finding, error) {
 					URL:      target,
 					Rule:     fmt.Sprintf("[%s] %s", rule.ID, rule.Name),
 					Severity: rule.Severity,
-					Message:  fmt.Sprintf("%s Value: %s", rule.PresentMsg, value),
+					Message:  fmt.Sprintf("%s Value: %s", rule.Description, value),
 					Found:    true,
 				})
 			}
@@ -149,7 +114,7 @@ func Scan(target string) ([]Finding, error) {
 				URL:      target,
 				Rule:     fmt.Sprintf("[%s] %s", rule.ID, rule.Name),
 				Severity: rule.Severity,
-				Message:  rule.MissingMsg,
+				Message:  rule.Description,
 				Found:    false,
 			})
 		}

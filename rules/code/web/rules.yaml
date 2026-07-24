@@ -8,7 +8,7 @@ rules:
     header: Strict-Transport-Security
     severity: HIGH
     description: HSTS not set. Browser connections can be downgraded to HTTP.
-    remediation: Add 'Strict-Transport-Security: max-age=31536000; includeSubDomains'
+    remediation: Add Strict-Transport-Security max-age=31536000 includeSubDomains
 
   - id: GOLEM-W002
     name: Missing CSP
@@ -22,21 +22,21 @@ rules:
     header: X-Frame-Options
     severity: MEDIUM
     description: Site may be vulnerable to clickjacking.
-    remediation: Add 'X-Frame-Options: DENY' or 'SAMEORIGIN'
+    remediation: Add X-Frame-Options DENY or SAMEORIGIN
 
   - id: GOLEM-W004
     name: Missing X-Content-Type-Options
     header: X-Content-Type-Options
     severity: MEDIUM
     description: MIME sniffing attacks are possible.
-    remediation: Add 'X-Content-Type-Options: nosniff'
+    remediation: Add X-Content-Type-Options nosniff
 
   - id: GOLEM-W005
     name: Missing Referrer-Policy
     header: Referrer-Policy
     severity: LOW
     description: Sensitive URLs may leak to third parties.
-    remediation: Add 'Referrer-Policy: strict-origin-when-cross-origin'
+    remediation: Add Referrer-Policy strict-origin-when-cross-origin
 
   - id: GOLEM-W006
     name: Missing Permissions-Policy
