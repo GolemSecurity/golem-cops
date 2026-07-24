@@ -23,11 +23,14 @@ func main() {
 	}
 
 	// parse flags
+	// parse flags
 	filtered := []string{}
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--json":
 			outputFormat = "json"
+		case "--sarif":
+			outputFormat = "sarif"
 		case "--output", "-o":
 			if i+1 < len(args) {
 				i++
@@ -342,7 +345,33 @@ func runFullScan(target string) {
 func outputReport(r *report.Report) {
 	r.Calculate()
 
-	if outputFormat == "json" {
+	switch outputFormat {
+	case "json":
+		if outputFile != "" {
+			err := r.SaveJSON(outputFile)
+			if err != nil {
+				fmt.Printf("[ERROR] Could not save report: %s\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("[✓] JSON report saved to %s\n", outputFile)
+		} else {
+			r.PrintJSON()
+		}
+
+	case "sarif":
+		if outputFile != "" {
+			err := r.SaveSARIF(outputFile)
+			if err != nil {
+				fmt.Printf("[ERROR] Could not save SARIF report: %s\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("[✓] SARIF report saved to %s\n", outputFile)
+		} else {
+			r.PrintSARIF()
+		}
+
+	default:
+		r.PrintText()
 		if outputFile != "" {
 			err := r.SaveJSON(outputFile)
 			if err != nil {
@@ -350,21 +379,7 @@ func outputReport(r *report.Report) {
 				os.Exit(1)
 			}
 			fmt.Printf("[✓] Report saved to %s\n", outputFile)
-		} else {
-			r.PrintJSON()
 		}
-		return
-	}
-
-	r.PrintText()
-
-	if outputFile != "" {
-		err := r.SaveJSON(outputFile)
-		if err != nil {
-			fmt.Printf("[ERROR] Could not save report: %s\n", err)
-			os.Exit(1)
-		}
-		fmt.Printf("[✓] Report saved to %s\n", outputFile)
 	}
 }
 
@@ -389,6 +404,7 @@ Code Commands:
 
 Flags:
   --json        Output results as JSON
+  --sarif       Output results in SARIF format (for GitHub, VS Code, CI tools)
   -o <file>     Save report to file
 
 Examples:
@@ -399,6 +415,8 @@ Examples:
   golem-cops code scan .
   golem-cops scan .
   golem-cops scan . --json
+  golem-cops scan . --sarif
+  golem-cops scan . --sarif -o results.sarif
   golem-cops scan . -o report.json
 `)
 }
