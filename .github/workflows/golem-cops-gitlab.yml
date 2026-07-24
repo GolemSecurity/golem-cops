@@ -1,0 +1,45 @@
+# GOLEM COPS - GitLab CI Integration
+# Copy this to your project's .gitlab-ci.yml or include it
+
+stages:
+  - security
+
+variables:
+  GOLEM_VERSION: "latest"
+  GOLEM_FAIL_ON_CRITICAL: "true"
+
+golem-cops-security-scan:
+  stage: security
+  image: ubuntu:latest
+  
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq curl
+    - curl -sSL https://github.com/GolemSecurity/golem-cops/releases/latest/download/golem-cops-linux-amd64 -o golem-cops
+    - chmod +x golem-cops
+
+  script:
+    - echo "Running GOLEM COPS Security Scan..."
+    - ./golem-cops code secret . --sarif -o golem-secret.sarif
+    - ./golem-cops code sast . --sarif -o golem-sast.sarif
+    - ./golem-cops code deps . --sarif -o golem-deps.sarif
+    - ./golem-cops code scan . --json -o golem-results.json
+    - |
+      CRITICAL=$(cat golem-results.json | grep -c '"severity": "CRITICAL"' || true)
+      if [ "$GOLEM_FAIL_ON_CRITICAL" = "true" ] && [ "$CRITICAL" -gt "0" ]; then
+        echo "GOLEM COPS found $CRITICAL CRITICAL issue(s). Pipeline blocked."
+        exit 1
+      fi
+      echo "GOLEM COPS scan complete."
+
+  artifacts:
+    when: always
+    reports:
+      sast: golem-sast.sarif
+    paths:
+      - golem-*.sarif
+      - golem-results.json
+    expire_in: 30 days
+
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

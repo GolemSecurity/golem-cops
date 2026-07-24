@@ -1,0 +1,68 @@
+name: GOLEM COPS Security Scan
+
+on:
+  push:
+    branches: ["main", "master", "develop"]
+  pull_request:
+    branches: ["main", "master", "develop"]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  golem-cops-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download GOLEM COPS
+        run: |
+          curl -sSL https://github.com/GolemSecurity/golem-cops/releases/latest/download/golem-cops-linux-amd64 -o golem-cops
+          chmod +x golem-cops
+
+      - name: Run secret scan
+        run: ./golem-cops code secret . --sarif -o golem-secret.sarif
+        continue-on-error: true
+
+      - name: Run SAST scan
+        run: ./golem-cops code sast . --sarif -o golem-sast.sarif
+        continue-on-error: true
+
+      - name: Run dependency scan
+        run: ./golem-cops code deps . --sarif -o golem-deps.sarif
+        continue-on-error: true
+
+      - name: Upload secret scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: golem-secret.sarif
+          category: golem-secret
+
+      - name: Upload SAST scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: golem-sast.sarif
+          category: golem-sast
+
+      - name: Upload dependency scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: golem-deps.sarif
+          category: golem-deps
+
+      - name: Fail on critical findings
+        run: |
+          ./golem-cops code scan . --json -o golem-results.json
+          CRITICAL=$(cat golem-results.json | grep -c '"severity": "CRITICAL"' || true)
+          if [ "$CRITICAL" -gt "0" ]; then
+            echo "❌ GOLEM COPS found $CRITICAL CRITICAL severity issue(s). Pipeline blocked."
+            exit 1
+          fi
+          echo "✅ No critical issues found."
