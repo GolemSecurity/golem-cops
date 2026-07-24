@@ -1,0 +1,60 @@
+version: "1.0"
+category: code
+scanner: web
+
+rules:
+  - id: GOLEM-W001
+    name: Missing HSTS
+    header: Strict-Transport-Security
+    severity: HIGH
+    description: HSTS not set. Browser connections can be downgraded to HTTP.
+    remediation: Add 'Strict-Transport-Security: max-age=31536000; includeSubDomains'
+
+  - id: GOLEM-W002
+    name: Missing CSP
+    header: Content-Security-Policy
+    severity: HIGH
+    description: No Content Security Policy. XSS attacks are more likely to succeed.
+    remediation: Define a strict Content-Security-Policy header.
+
+  - id: GOLEM-W003
+    name: Missing X-Frame-Options
+    header: X-Frame-Options
+    severity: MEDIUM
+    description: Site may be vulnerable to clickjacking.
+    remediation: Add 'X-Frame-Options: DENY' or 'SAMEORIGIN'
+
+  - id: GOLEM-W004
+    name: Missing X-Content-Type-Options
+    header: X-Content-Type-Options
+    severity: MEDIUM
+    description: MIME sniffing attacks are possible.
+    remediation: Add 'X-Content-Type-Options: nosniff'
+
+  - id: GOLEM-W005
+    name: Missing Referrer-Policy
+    header: Referrer-Policy
+    severity: LOW
+    description: Sensitive URLs may leak to third parties.
+    remediation: Add 'Referrer-Policy: strict-origin-when-cross-origin'
+
+  - id: GOLEM-W006
+    name: Missing Permissions-Policy
+    header: Permissions-Policy
+    severity: LOW
+    description: Browser features are not restricted.
+    remediation: Add a Permissions-Policy header restricting unused features.
+
+  - id: GOLEM-W007
+    name: Technology Disclosure
+    header: X-Powered-By
+    severity: LOW
+    description: X-Powered-By header exposes technology stack.
+    remediation: Remove the X-Powered-By header from server responses.
+
+  - id: GOLEM-W008
+    name: Server Version Disclosure
+    header: Server
+    severity: LOW
+    description: Server header exposes software version.
+    remediation: Remove or genericize the Server header.

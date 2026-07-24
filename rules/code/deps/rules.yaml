@@ -1,0 +1,9 @@
+version: "1.0"
+category: code
+scanner: deps
+notes: >
+  Dependency vulnerability rules are powered by the OSV API (osv.dev).
+  Live vulnerability data is fetched automatically at scan time.
+  Custom dependency rules can be added here in future versions.
+
+rules: []
