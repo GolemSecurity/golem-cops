@@ -20,7 +20,7 @@ scanner: secret  # secret | sast | web
 rules:
   - id: GOLEM-S009          # unique ID, increment from last
     name: My Rule Name
-    pattern: 'your-regex-here'
+    pattern: 'your-regex-pattern-here'
     severity: HIGH           # CRITICAL | HIGH | MEDIUM | LOW
     description: What this rule detects.
     remediation: How to fix it.
@@ -42,16 +42,16 @@ rules:
 
 ### Example — Adding a Secret Rule
 
-Open `rules/code/secret/rules.yaml` and add:
+Open `rules/code/secret/rules.yaml` and add a new entry following this structure:
 
 ```yaml
   - id: GOLEM-S009
-    name: Stripe API Key
-    pattern: 'sk_live_[a-zA-Z0-9]{24,}'
+    name: Payment API Key
+    pattern: 'YOUR_REGEX_PATTERN_FOR_THE_SECRET'
     severity: CRITICAL
-    description: Stripe live API key detected in source code.
-    remediation: Revoke the key immediately on Stripe dashboard and use environment variables.
-    tags: [secret, stripe, payment, credential]
+    description: Payment API key detected in source code.
+    remediation: Revoke the key immediately and use environment variables.
+    tags: [secret, payment, credential]
 ```
 
 ### Example — Adding a SAST Rule
@@ -77,7 +77,7 @@ After adding a rule, test it:
 
 ```bash
 # create a test file with a pattern your rule should catch
-echo 'sk_live_abcdefghijklmnopqrstuvwx' > test_rule.txt
+echo 'your_test_value_here' > test_rule.txt
 
 # run the scanner
 golem-cops code secret .

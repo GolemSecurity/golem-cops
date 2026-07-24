@@ -194,7 +194,7 @@ Example — add a custom secret rule in `rules/code/secret/rules.yaml`:
 ```yaml
   - id: GOLEM-S009
     name: Stripe API Key
-    pattern: 'sk_live_[a-zA-Z0-9]{24,}'
+    pattern: 'YOUR_REGEX_PATTERN_HERE'
     severity: CRITICAL
     description: Stripe live API key detected in source code.
     remediation: Revoke immediately and use environment variables.
