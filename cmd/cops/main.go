@@ -174,13 +174,16 @@ func runDepsScan(target string) {
 
 	for _, f := range findings {
 		r.AddFindings([]report.Finding{{
-			Scanner:  "deps",
-			Rule:     f.Rule,
-			Severity: f.Severity,
-			File:     f.File,
-			Package:  f.Package,
-			Version:  f.Version,
-			Message:  f.Message,
+			Scanner:     "deps",
+			Rule:        f.Rule,
+			Severity:    f.Severity,
+			File:        f.File,
+			Package:     f.Package,
+			Version:     f.Version,
+			FixedIn:     f.FixedIn,
+			CVEID:       f.CVEID,
+			AdvisoryURL: f.URL,
+			Message:     f.Message,
 		}})
 	}
 

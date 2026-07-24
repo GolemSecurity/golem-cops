@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/GolemSecurity/golem-cops/internal/engine"
 )
 
 type Finding struct {
@@ -17,56 +19,9 @@ type Finding struct {
 	Rule     string
 	Severity string
 	Message  string
-}
-
-// Known vulnerable packages (simplified - in real world this hits a CVE database)
-var knownVulnerable = map[string]VulnInfo{
-	"lodash": {
-		Severity: "HIGH",
-		Message:  "Versions below 4.17.21 have prototype pollution vulnerabilities (CVE-2021-23337).",
-		SafeVersion: "4.17.21",
-	},
-	"axios": {
-		Severity: "MEDIUM",
-		Message:  "Versions below 1.6.0 may have SSRF vulnerabilities.",
-		SafeVersion: "1.6.0",
-	},
-	"log4j": {
-		Severity: "CRITICAL",
-		Message:  "Log4Shell vulnerability (CVE-2021-44228). Upgrade immediately.",
-		SafeVersion: "2.17.1",
-	},
-	"django": {
-		Severity: "HIGH",
-		Message:  "Versions below 4.2.0 have known security patches missing.",
-		SafeVersion: "4.2.0",
-	},
-	"express": {
-		Severity: "LOW",
-		Message:  "Ensure you are using latest express for security patches.",
-		SafeVersion: "4.18.0",
-	},
-	"requests": {
-		Severity: "MEDIUM",
-		Message:  "Versions below 2.28.0 have known vulnerabilities.",
-		SafeVersion: "2.28.0",
-	},
-	"numpy": {
-		Severity: "MEDIUM",
-		Message:  "Versions below 1.22.0 have buffer overflow vulnerabilities.",
-		SafeVersion: "1.22.0",
-	},
-	"pyyaml": {
-		Severity: "HIGH",
-		Message:  "Versions below 6.0 allow arbitrary code execution via yaml.load().",
-		SafeVersion: "6.0",
-	},
-}
-
-type VulnInfo struct {
-	Severity    string
-	Message     string
-	SafeVersion string
+	FixedIn  string
+	CVEID    string
+	URL      string
 }
 
 func Scan(target string) ([]Finding, error) {
@@ -78,7 +33,8 @@ func Scan(target string) ([]Finding, error) {
 		}
 
 		if info.IsDir() {
-			if info.Name() == "node_modules" || info.Name() == ".git" || info.Name() == "vendor" {
+			if info.Name() == "node_modules" || info.Name() == ".git" ||
+				info.Name() == "vendor" || info.Name() == ".venv" {
 				return filepath.SkipDir
 			}
 			return nil
@@ -90,10 +46,14 @@ func Scan(target string) ([]Finding, error) {
 		switch info.Name() {
 		case "package.json":
 			fileFindings, scanErr = scanPackageJSON(path)
+		case "package-lock.json":
+			return nil
 		case "requirements.txt":
 			fileFindings, scanErr = scanRequirementsTxt(path)
 		case "go.mod":
 			fileFindings, scanErr = scanGoMod(path)
+		case "pom.xml":
+			fileFindings, scanErr = scanPomXML(path)
 		}
 
 		if scanErr == nil {
@@ -123,7 +83,6 @@ func scanPackageJSON(path string) ([]Finding, error) {
 	}
 
 	var findings []Finding
-
 	allDeps := map[string]string{}
 	for k, v := range pkg.Dependencies {
 		allDeps[k] = v
@@ -132,8 +91,27 @@ func scanPackageJSON(path string) ([]Finding, error) {
 		allDeps[k] = v
 	}
 
+	fmt.Printf("  Checking %d npm packages via OSV...\n", len(allDeps))
+
 	for name, version := range allDeps {
-		findings = append(findings, checkPackage(path, name, version)...)
+		version = cleanVersion(version)
+		vulns, err := engine.QueryOSV(name, version, "npm")
+		if err != nil {
+			continue
+		}
+		for _, vuln := range vulns {
+			findings = append(findings, Finding{
+				File:     path,
+				Package:  name,
+				Version:  version,
+				Rule:     fmt.Sprintf("[OSV] %s", vuln.ID),
+				Severity: vuln.Severity,
+				Message:  vuln.Summary,
+				FixedIn:  vuln.FixedIn,
+				CVEID:    vuln.ID,
+				URL:      vuln.URL,
+			})
+		}
 	}
 
 	return findings, nil
@@ -147,8 +125,8 @@ func scanRequirementsTxt(path string) ([]Finding, error) {
 	}
 	defer file.Close()
 
-	var findings []Finding
-	re := regexp.MustCompile(`^([a-zA-Z0-9_\-]+)\s*([><=!]+\s*[\d\.]+)?`)
+	var packages [][]string
+	re := regexp.MustCompile(`^([a-zA-Z0-9_\-]+)\s*[><=!]+\s*([\d\.]+)`)
 	scanner := bufio.NewScanner(file)
 
 	for scanner.Scan() {
@@ -157,13 +135,32 @@ func scanRequirementsTxt(path string) ([]Finding, error) {
 			continue
 		}
 		matches := re.FindStringSubmatch(line)
-		if len(matches) >= 2 {
-			name := strings.ToLower(matches[1])
-			version := ""
-			if len(matches) >= 3 {
-				version = strings.TrimSpace(matches[2])
-			}
-			findings = append(findings, checkPackage(path, name, version)...)
+		if len(matches) >= 3 {
+			packages = append(packages, []string{matches[1], matches[2]})
+		}
+	}
+
+	fmt.Printf("  Checking %d PyPI packages via OSV...\n", len(packages))
+
+	var findings []Finding
+	for _, pkg := range packages {
+		name, version := pkg[0], pkg[1]
+		vulns, err := engine.QueryOSV(name, version, "PyPI")
+		if err != nil {
+			continue
+		}
+		for _, vuln := range vulns {
+			findings = append(findings, Finding{
+				File:     path,
+				Package:  name,
+				Version:  version,
+				Rule:     fmt.Sprintf("[OSV] %s", vuln.ID),
+				Severity: vuln.Severity,
+				Message:  vuln.Summary,
+				FixedIn:  vuln.FixedIn,
+				CVEID:    vuln.ID,
+				URL:      vuln.URL,
+			})
 		}
 	}
 
@@ -178,39 +175,112 @@ func scanGoMod(path string) ([]Finding, error) {
 	}
 	defer file.Close()
 
-	var findings []Finding
-	re := regexp.MustCompile(`^\s*require\s+([^\s]+)\s+(v[\d\.]+)`)
+	var packages [][]string
+	re := regexp.MustCompile(`^\s*([^\s]+)\s+(v[\d\.]+)`)
 	scanner := bufio.NewScanner(file)
+	inRequire := false
 
 	for scanner.Scan() {
-		line := scanner.Text()
-		matches := re.FindStringSubmatch(line)
-		if len(matches) >= 3 {
-			name := matches[1]
-			version := matches[2]
-			findings = append(findings, checkPackage(path, name, version)...)
+		line := strings.TrimSpace(scanner.Text())
+		if line == "require (" {
+			inRequire = true
+			continue
+		}
+		if line == ")" {
+			inRequire = false
+			continue
+		}
+		if strings.HasPrefix(line, "require ") {
+			line = strings.TrimPrefix(line, "require ")
+		}
+		if inRequire || strings.HasPrefix(line, "require ") {
+			matches := re.FindStringSubmatch(line)
+			if len(matches) >= 3 {
+				packages = append(packages, []string{matches[1], matches[2]})
+			}
+		}
+	}
+
+	fmt.Printf("  Checking %d Go packages via OSV...\n", len(packages))
+
+	var findings []Finding
+	for _, pkg := range packages {
+		name, version := pkg[0], pkg[1]
+		vulns, err := engine.QueryOSV(name, version, "Go")
+		if err != nil {
+			continue
+		}
+		for _, vuln := range vulns {
+			findings = append(findings, Finding{
+				File:     path,
+				Package:  name,
+				Version:  version,
+				Rule:     fmt.Sprintf("[OSV] %s", vuln.ID),
+				Severity: vuln.Severity,
+				Message:  vuln.Summary,
+				FixedIn:  vuln.FixedIn,
+				CVEID:    vuln.ID,
+				URL:      vuln.URL,
+			})
 		}
 	}
 
 	return findings, nil
 }
 
-func checkPackage(file, name, version string) []Finding {
-	var findings []Finding
-	lname := strings.ToLower(name)
+// pom.xml parser (Maven)
+func scanPomXML(path string) ([]Finding, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
 
-	for vulnPkg, info := range knownVulnerable {
-		if strings.Contains(lname, vulnPkg) {
+	content := string(data)
+	artifactRe := regexp.MustCompile(`<artifactId>([^<]+)</artifactId>`)
+	versionRe := regexp.MustCompile(`<version>([^<]+)</version>`)
+
+	artifacts := artifactRe.FindAllStringSubmatch(content, -1)
+	versions := versionRe.FindAllStringSubmatch(content, -1)
+
+	var packages [][]string
+	for i, artifact := range artifacts {
+		if i < len(versions) {
+			packages = append(packages, []string{artifact[1], versions[i][1]})
+		}
+	}
+
+	fmt.Printf("  Checking %d Maven packages via OSV...\n", len(packages))
+
+	var findings []Finding
+	for _, pkg := range packages {
+		name, version := pkg[0], pkg[1]
+		vulns, err := engine.QueryOSV(name, version, "Maven")
+		if err != nil {
+			continue
+		}
+		for _, vuln := range vulns {
 			findings = append(findings, Finding{
-				File:     file,
+				File:     path,
 				Package:  name,
 				Version:  version,
-				Rule:     fmt.Sprintf("[DEPS] Vulnerable Package: %s", name),
-				Severity: info.Severity,
-				Message:  fmt.Sprintf("%s Safe version: %s+", info.Message, info.SafeVersion),
+				Rule:     fmt.Sprintf("[OSV] %s", vuln.ID),
+				Severity: vuln.Severity,
+				Message:  vuln.Summary,
+				FixedIn:  vuln.FixedIn,
+				CVEID:    vuln.ID,
+				URL:      vuln.URL,
 			})
 		}
 	}
 
-	return findings
+	return findings, nil
+}
+
+func cleanVersion(version string) string {
+	version = strings.TrimSpace(version)
+	prefixes := []string{"^", "~", ">=", "<=", ">", "<", "="}
+	for _, p := range prefixes {
+		version = strings.TrimPrefix(version, p)
+	}
+	return strings.TrimSpace(version)
 }

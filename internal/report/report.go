@@ -25,6 +25,9 @@ type Finding struct {
 	URL         string `json:"url,omitempty"`
 	Package     string `json:"package,omitempty"`
 	Version     string `json:"version,omitempty"`
+	FixedIn     string `json:"fixed_in,omitempty"`
+	CVEID       string `json:"cve_id,omitempty"`
+	AdvisoryURL string `json:"advisory_url,omitempty"`
 	Message     string `json:"message"`
 	Code        string `json:"code,omitempty"`
 	Match       string `json:"match,omitempty"`
@@ -51,7 +54,7 @@ type Summary struct {
 func NewReport(target string) *Report {
 	return &Report{
 		Tool:      "GOLEM COPS",
-		Version:   "0.1.0",
+		Version:   "1.0.0",
 		Target:    target,
 		Timestamp: time.Now().Format(time.RFC3339),
 		Findings:  []Finding{},
@@ -114,13 +117,24 @@ func (r *Report) PrintText() {
 		if f.Package != "" {
 			fmt.Printf("  Package : %s %s\n", f.Package, f.Version)
 		}
+		if f.FixedIn != "" {
+			fmt.Printf("  Fixed In: %s\n", f.FixedIn)
+		}
+		if f.AdvisoryURL != "" {
+			fmt.Printf("  Advisory: %s\n", f.AdvisoryURL)
+		}
 		if f.Code != "" {
 			fmt.Printf("  Code    : %s\n", f.Code)
 		}
 		if f.Match != "" {
 			fmt.Printf("  Match   : %s\n", f.Match)
 		}
-		fmt.Printf("  Why     : %s\n", f.Message)
+		if f.Message != "" {
+			fmt.Printf("  Why     : %s\n", f.Message)
+		}
+		if f.Remediation != "" {
+			fmt.Printf("  Fix     : %s\n", f.Remediation)
+		}
 		fmt.Println()
 	}
 }
