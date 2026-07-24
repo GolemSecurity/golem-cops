@@ -1,0 +1,94 @@
+version: "1.0"
+category: code
+scanner: sast
+
+rules:
+  - id: GOLEM-A001
+    name: Unsafe Eval Usage
+    pattern: '\beval\s*\('
+    severity: HIGH
+    description: eval() executes arbitrary code and is a major injection risk.
+    remediation: Avoid eval(). Use safer alternatives like JSON.parse() for data parsing.
+    languages: [.js, .ts, .py]
+    tags: [injection, eval, code-execution]
+
+  - id: GOLEM-A002
+    name: SQL Injection Risk
+    pattern: '(?i)(query|execute|exec)\s*\(.*\+'
+    severity: CRITICAL
+    description: String concatenation in SQL query may allow SQL injection.
+    remediation: Use parameterized queries or prepared statements.
+    languages: [.go, .js, .py, .java, .php]
+    tags: [injection, sql, database]
+
+  - id: GOLEM-A003
+    name: Hardcoded IP Address
+    pattern: '\b(\d{1,3}\.){3}\d{1,3}\b'
+    severity: LOW
+    description: Hardcoded IP address detected.
+    remediation: Use configuration files or environment variables for IP addresses.
+    languages: [.go, .js, .py, .java, .ts]
+    tags: [configuration, hardcoded]
+
+  - id: GOLEM-A004
+    name: Insecure Random
+    pattern: '(?i)(math\.random|rand\.intn|random\.random)\s*\('
+    severity: MEDIUM
+    description: Insecure random number generator used.
+    remediation: Use crypto/rand or equivalent cryptographically secure random generator.
+    languages: [.go, .js, .py]
+    tags: [cryptography, random, insecure]
+
+  - id: GOLEM-A005
+    name: Command Injection Risk
+    pattern: '(?i)(exec\.command|os\.system|subprocess\.call|child_process)\s*\('
+    severity: HIGH
+    description: Dynamic command execution detected.
+    remediation: Validate and sanitize all inputs before passing to command execution.
+    languages: [.go, .py, .js]
+    tags: [injection, command, os]
+
+  - id: GOLEM-A006
+    name: Weak Hash Algorithm
+    pattern: '(?i)(md5|sha1)\s*\.'
+    severity: MEDIUM
+    description: Weak hashing algorithm detected.
+    remediation: Use SHA-256 or stronger for security-sensitive operations.
+    languages: [.go, .js, .py, .java]
+    tags: [cryptography, hashing, weak]
+
+  - id: GOLEM-A007
+    name: TODO Security Comment
+    pattern: '(?i)//\s*TODO.*(auth|security|sanitize|validate|encrypt)'
+    severity: LOW
+    description: Unresolved security-related TODO comment found.
+    remediation: Resolve the security concern before shipping to production.
+    languages: [.go, .js, .py, .java, .ts]
+    tags: [code-quality, security, todo]
+
+  - id: GOLEM-A008
+    name: Insecure TLS Verification
+    pattern: '(?i)(insecureskipverify|verify\s*=\s*false|ssl_verify\s*=\s*false)'
+    severity: HIGH
+    description: TLS certificate verification is disabled.
+    remediation: Always verify TLS certificates in production environments.
+    languages: [.go, .py, .js]
+    tags: [tls, mitm, cryptography]
+
+  - id: GOLEM-A009
+    name: Path Traversal Risk
+    pattern: '(?i)(\.\.\/|\.\.\\)'
+    severity: HIGH
+    description: Potential path traversal pattern detected.
+    remediation: Validate and sanitize file paths. Use filepath.Clean() or equivalent.
+    languages: [.go, .js, .py, .java, .php]
+    tags: [injection, path-traversal, filesystem]
+
+  - id: GOLEM-A010
+    name: Hardcoded JWT Secret
+    pattern: '(?i)(jwt|token).*(secret|key)\s*=\s*["''][^"'']{8,}["'']'
+    severity: CRITICAL
+    description: Hardcoded JWT secret detected.
+    remediation: Store JWT secrets in environment variables or a secrets manager.
+    languages: [.go, .js, .py, .java]
+    tags: [secret, jwt, authentication]

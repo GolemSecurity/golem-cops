@@ -5,56 +5,19 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
+
+	"github.com/GolemSecurity/golem-cops/internal/engine"
 )
 
 type Finding struct {
-	File    string
-	Line    int
-	Rule    string
-	Match   string
-	Severity string
-}
-
-type Rule struct {
-	ID       string
-	Name     string
-	Pattern  *regexp.Regexp
-	Severity string
-}
-
-var rules = []Rule{
-	{
-		ID:       "GOLEM001",
-		Name:     "Hardcoded Password",
-		Pattern:  regexp.MustCompile(`(?i)(password|passwd|pwd)\s*=\s*["'][^"']{3,}["']`),
-		Severity: "HIGH",
-	},
-	{
-		ID:       "GOLEM002",
-		Name:     "Hardcoded API Key",
-		Pattern:  regexp.MustCompile(`(?i)(api_key|apikey|api-key)\s*=\s*["'][^"']{8,}["']`),
-		Severity: "HIGH",
-	},
-	{
-		ID:       "GOLEM003",
-		Name:     "AWS Access Key",
-		Pattern:  regexp.MustCompile(`AKIA[0-9A-Z]{16}`),
-		Severity: "CRITICAL",
-	},
-	{
-		ID:       "GOLEM004",
-		Name:     "Generic Secret",
-		Pattern:  regexp.MustCompile(`(?i)(secret|token)\s*=\s*["'][^"']{8,}["']`),
-		Severity: "MEDIUM",
-	},
-	{
-		ID:       "GOLEM005",
-		Name:     "Private Key Header",
-		Pattern:  regexp.MustCompile(`-----BEGIN (RSA |EC )?PRIVATE KEY-----`),
-		Severity: "CRITICAL",
-	},
+	File        string
+	Line        int
+	Rule        string
+	Match       string
+	Severity    string
+	Description string
+	Remediation string
 }
 
 var skipDirs = map[string]bool{
@@ -67,9 +30,15 @@ var skipExts = map[string]bool{
 }
 
 func Scan(target string) ([]Finding, error) {
+	rulesDir := filepath.Join(engine.FindRulesDir(), "code", "secret")
+	rules, err := engine.LoadRules(rulesDir)
+	if err != nil || len(rules) == 0 {
+		return nil, fmt.Errorf("could not load secret rules from %s", rulesDir)
+	}
+
 	var findings []Finding
 
-	err := filepath.Walk(target, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(target, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -85,7 +54,7 @@ func Scan(target string) ([]Finding, error) {
 			return nil
 		}
 
-		fileFindings, err := scanFile(path)
+		fileFindings, err := scanFile(path, rules)
 		if err != nil {
 			return nil
 		}
@@ -97,7 +66,7 @@ func Scan(target string) ([]Finding, error) {
 	return findings, err
 }
 
-func scanFile(path string) ([]Finding, error) {
+func scanFile(path string, rules []engine.CompiledRule) ([]Finding, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -116,11 +85,13 @@ func scanFile(path string) ([]Finding, error) {
 			if rule.Pattern.MatchString(line) {
 				match := rule.Pattern.FindString(line)
 				findings = append(findings, Finding{
-					File:     path,
-					Line:     lineNum,
-					Rule:     fmt.Sprintf("[%s] %s", rule.ID, rule.Name),
-					Match:    redact(match),
-					Severity: rule.Severity,
+					File:        path,
+					Line:        lineNum,
+					Rule:        fmt.Sprintf("[%s] %s", rule.ID, rule.Name),
+					Match:       redact(match),
+					Severity:    rule.Severity,
+					Description: rule.Description,
+					Remediation: rule.Remediation,
 				})
 			}
 		}

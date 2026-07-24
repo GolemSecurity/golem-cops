@@ -17,17 +17,18 @@ const (
 )
 
 type Finding struct {
-	Scanner  string `json:"scanner"`
-	Rule     string `json:"rule"`
-	Severity string `json:"severity"`
-	File     string `json:"file,omitempty"`
-	Line     int    `json:"line,omitempty"`
-	URL      string `json:"url,omitempty"`
-	Package  string `json:"package,omitempty"`
-	Version  string `json:"version,omitempty"`
-	Message  string `json:"message"`
-	Code     string `json:"code,omitempty"`
-	Match    string `json:"match,omitempty"`
+	Scanner     string `json:"scanner"`
+	Rule        string `json:"rule"`
+	Severity    string `json:"severity"`
+	File        string `json:"file,omitempty"`
+	Line        int    `json:"line,omitempty"`
+	URL         string `json:"url,omitempty"`
+	Package     string `json:"package,omitempty"`
+	Version     string `json:"version,omitempty"`
+	Message     string `json:"message"`
+	Code        string `json:"code,omitempty"`
+	Match       string `json:"match,omitempty"`
+	Remediation string `json:"remediation,omitempty"`
 }
 
 type Report struct {

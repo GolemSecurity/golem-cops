@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/GolemSecurity/golem/internal/report"
-	"github.com/GolemSecurity/golem/internal/scanner/deps"
-	"github.com/GolemSecurity/golem/internal/scanner/sast"
-	"github.com/GolemSecurity/golem/internal/scanner/secret"
-	"github.com/GolemSecurity/golem/internal/scanner/web"
+	"github.com/GolemSecurity/golem-cops/internal/report"
+	"github.com/GolemSecurity/golem-cops/internal/scanner/deps"
+	"github.com/GolemSecurity/golem-cops/internal/scanner/sast"
+	"github.com/GolemSecurity/golem-cops/internal/scanner/secret"
+	"github.com/GolemSecurity/golem-cops/internal/scanner/web"
 )
 
 var outputFormat = "text"
@@ -43,33 +43,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	command := filtered[0]
+	// CLI structure: golem-cops <layer> <command> [target]
+	// e.g. golem-cops code secret .
+	// e.g. golem-cops code scan .
+	// e.g. golem-cops scan . (runs all)
 
-	switch command {
-	case "secret":
-		target := "."
-		if len(filtered) >= 2 {
-			target = filtered[1]
-		}
-		runSecretScan(target)
-	case "sast":
-		target := "."
-		if len(filtered) >= 2 {
-			target = filtered[1]
-		}
-		runSASTScan(target)
-	case "deps":
-		target := "."
-		if len(filtered) >= 2 {
-			target = filtered[1]
-		}
-		runDepsScan(target)
-	case "web":
-		if len(filtered) < 2 {
-			fmt.Println("[ERROR] Please provide a URL. Example: golem-cops web https://example.com")
-			os.Exit(1)
-		}
-		runWebScan(filtered[1])
+	switch filtered[0] {
+	case "code":
+		handleCode(filtered[1:])
 	case "scan":
 		target := "."
 		if len(filtered) >= 2 {
@@ -77,8 +58,42 @@ func main() {
 		}
 		runFullScan(target)
 	default:
-		fmt.Printf("[GOLEM COPS] Unknown command: %s\n", command)
+		fmt.Printf("[GOLEM COPS] Unknown command: %s\n", filtered[0])
 		printHelp()
+		os.Exit(1)
+	}
+}
+
+func handleCode(args []string) {
+	if len(args) == 0 {
+		printCodeHelp()
+		os.Exit(1)
+	}
+
+	command := args[0]
+	target := "."
+	if len(args) >= 2 {
+		target = args[1]
+	}
+
+	switch command {
+	case "secret":
+		runSecretScan(target)
+	case "sast":
+		runSASTScan(target)
+	case "deps":
+		runDepsScan(target)
+	case "web":
+		if len(args) < 2 {
+			fmt.Println("[ERROR] Please provide a URL. Example: golem-cops code web https://example.com")
+			os.Exit(1)
+		}
+		runWebScan(args[1])
+	case "scan":
+		runCodeScan(target)
+	default:
+		fmt.Printf("[GOLEM COPS] Unknown code command: %s\n", command)
+		printCodeHelp()
 		os.Exit(1)
 	}
 }
@@ -99,13 +114,14 @@ func runSecretScan(target string) {
 
 	for _, f := range findings {
 		r.AddFindings([]report.Finding{{
-			Scanner:  "secret",
-			Rule:     f.Rule,
-			Severity: f.Severity,
-			File:     f.File,
-			Line:     f.Line,
-			Match:    f.Match,
-			Message:  f.Rule,
+			Scanner:     "secret",
+			Rule:        f.Rule,
+			Severity:    f.Severity,
+			File:        f.File,
+			Line:        f.Line,
+			Match:       f.Match,
+			Message:     f.Description,
+			Remediation: f.Remediation,
 		}})
 	}
 
@@ -128,13 +144,14 @@ func runSASTScan(target string) {
 
 	for _, f := range findings {
 		r.AddFindings([]report.Finding{{
-			Scanner:  "sast",
-			Rule:     f.Rule,
-			Severity: f.Severity,
-			File:     f.File,
-			Line:     f.Line,
-			Code:     f.Code,
-			Message:  f.Message,
+			Scanner:     "sast",
+			Rule:        f.Rule,
+			Severity:    f.Severity,
+			File:        f.File,
+			Line:        f.Line,
+			Code:        f.Code,
+			Message:     f.Message,
+			Remediation: f.Remediation,
 		}})
 	}
 
@@ -197,6 +214,67 @@ func runWebScan(target string) {
 	outputReport(r)
 }
 
+func runCodeScan(target string) {
+	r := report.NewReport(target)
+
+	if outputFormat == "text" {
+		fmt.Printf("\n[GOLEM COPS] Running full code scan on: %s\n", target)
+		fmt.Println("─────────────────────────────────────────")
+		fmt.Println("  Running secret scan...")
+	}
+
+	secretFindings, _ := secret.Scan(target)
+	for _, f := range secretFindings {
+		r.AddFindings([]report.Finding{{
+			Scanner:     "secret",
+			Rule:        f.Rule,
+			Severity:    f.Severity,
+			File:        f.File,
+			Line:        f.Line,
+			Match:       f.Match,
+			Message:     f.Description,
+			Remediation: f.Remediation,
+		}})
+	}
+
+	if outputFormat == "text" {
+		fmt.Println("  Running SAST scan...")
+	}
+
+	sastFindings, _ := sast.Scan(target)
+	for _, f := range sastFindings {
+		r.AddFindings([]report.Finding{{
+			Scanner:     "sast",
+			Rule:        f.Rule,
+			Severity:    f.Severity,
+			File:        f.File,
+			Line:        f.Line,
+			Code:        f.Code,
+			Message:     f.Message,
+			Remediation: f.Remediation,
+		}})
+	}
+
+	if outputFormat == "text" {
+		fmt.Println("  Running dependency scan...")
+	}
+
+	depsFindings, _ := deps.Scan(target)
+	for _, f := range depsFindings {
+		r.AddFindings([]report.Finding{{
+			Scanner:  "deps",
+			Rule:     f.Rule,
+			Severity: f.Severity,
+			File:     f.File,
+			Package:  f.Package,
+			Version:  f.Version,
+			Message:  f.Message,
+		}})
+	}
+
+	outputReport(r)
+}
+
 func runFullScan(target string) {
 	r := report.NewReport(target)
 
@@ -209,13 +287,14 @@ func runFullScan(target string) {
 	secretFindings, _ := secret.Scan(target)
 	for _, f := range secretFindings {
 		r.AddFindings([]report.Finding{{
-			Scanner:  "secret",
-			Rule:     f.Rule,
-			Severity: f.Severity,
-			File:     f.File,
-			Line:     f.Line,
-			Match:    f.Match,
-			Message:  f.Rule,
+			Scanner:     "secret",
+			Rule:        f.Rule,
+			Severity:    f.Severity,
+			File:        f.File,
+			Line:        f.Line,
+			Match:       f.Match,
+			Message:     f.Description,
+			Remediation: f.Remediation,
 		}})
 	}
 
@@ -226,13 +305,14 @@ func runFullScan(target string) {
 	sastFindings, _ := sast.Scan(target)
 	for _, f := range sastFindings {
 		r.AddFindings([]report.Finding{{
-			Scanner:  "sast",
-			Rule:     f.Rule,
-			Severity: f.Severity,
-			File:     f.File,
-			Line:     f.Line,
-			Code:     f.Code,
-			Message:  f.Message,
+			Scanner:     "sast",
+			Rule:        f.Rule,
+			Severity:    f.Severity,
+			File:        f.File,
+			Line:        f.Line,
+			Code:        f.Code,
+			Message:     f.Message,
+			Remediation: f.Remediation,
 		}})
 	}
 
@@ -287,30 +367,57 @@ func outputReport(r *report.Report) {
 
 func printHelp() {
 	fmt.Println(`
-GOLEM COPS - Code Offensive Prevention System
-Version 0.1.0
+GOLEM COPS - Continuous Operations Protection System
+Version 1.0.0
 
 Usage:
-  golem-cops <command> [target] [flags]
+  golem-cops <layer> <command> [target] [flags]
 
-Commands:
+Layers:
+  code     Protect your source code
+  scan     Run all available scans
+
+Code Commands:
   secret   Scan for hardcoded secrets and API keys
   sast     Static analysis for code vulnerabilities
   deps     Scan dependencies for known issues
   web      Scan web endpoints for security headers
-  scan     Run all scanners at once
+  scan     Run all code scanners at once
 
 Flags:
   --json        Output results as JSON
   -o <file>     Save report to file
 
 Examples:
-  golem-cops secret .
-  golem-cops sast .
-  golem-cops deps .
-  golem-cops web https://example.com
+  golem-cops code secret .
+  golem-cops code sast .
+  golem-cops code deps .
+  golem-cops code web https://example.com
+  golem-cops code scan .
   golem-cops scan .
   golem-cops scan . --json
   golem-cops scan . -o report.json
+`)
+}
+
+func printCodeHelp() {
+	fmt.Println(`
+GOLEM COPS - Code Protection
+
+Usage:
+  golem-cops code <command> [target]
+
+Commands:
+  secret   Scan for hardcoded secrets and API keys
+  sast     Static analysis for code vulnerabilities
+  deps     Scan dependencies for known issues
+  web      Scan web endpoints for security headers
+  scan     Run all code scanners
+
+Examples:
+  golem-cops code secret .
+  golem-cops code sast .
+  golem-cops code scan .
+  golem-cops code web https://example.com
 `)
 }
